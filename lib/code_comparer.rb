@@ -14,7 +14,7 @@ class CodeComparer
   end
 
   def similar?(proximity = DEFAULT_PROXIMITY)
-    difference.positive <= proximity and length_difference.positive <= [proximity / 2, 5].min
+    difference.abs <= proximity and length_difference.abs <= [proximity / 2, 5].min
   end
 
   def difference
@@ -81,7 +81,12 @@ class CodeComparer
 
     def reduce(code, base_code = nil, language = nil)
       if language == 'ruby'
-        return RubyVM::InstructionSequence.compile(code).disasm.gsub!(/[ \t]+/, ' ')
+        # FIXME:  We'll be splitting the languages into different classes.
+        return RubyVM::InstructionSequence.
+          compile(code).disasm.tap { |r|
+            r.gsub!(/[ \t]+/, ' ')
+            r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
+          }
       end
 
       regex = /[ ;,(){}\t'"]/
@@ -157,7 +162,7 @@ class CodeComparer
         if proximity == 0
           return group if group.reduced_code == reduced_code
         else
-          return group if (group.hash_sum - hash_sum).positive < @proximity
+          return group if (group.hash_sum - hash_sum).abs < @proximity
         end
       end
 
@@ -203,8 +208,10 @@ class CodeComparer
       end
 
       def add(code, data)
+        return false unless data
+
         # use the data id key to determine if this is a duplicate - if so ignore it
-        if data.try(:[], :id) and @data.find {|d| d[:id] == data[:id]}
+        if @data.find {|d| d[:id] == data[:id]}
           return false
         end
 

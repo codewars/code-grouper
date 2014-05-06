@@ -71,6 +71,16 @@ describe CodeComparer do
     end
   CODE
 
+  # Identical to the previous one, but with additional comments and whitespace.
+  real_code_sample4b = <<-CODE
+    # A comment.
+    def squareSum numbers
+
+      numbers.map{ |i| i**2 }.inject(0, :+) # Another comment.
+
+    end
+  CODE
+
   real_code_sample5 = <<-CODE
     def squareSum(numbers)
       numbers.reject(0){|x,y| x = x + (y**2)}
@@ -147,8 +157,8 @@ describe CodeComparer do
     end
 
     it 'should not match 2 strings of similar weighted values but not similar code' do
-      CodeComparer.difference(real_code_sample1, real_code_sample2, real_code_sample_base).positive.should > 10
-      CodeComparer.difference(real_code_sample3, real_code_sample4).positive.should > 4
+      CodeComparer.difference(real_code_sample1, real_code_sample2, real_code_sample_base).abs.should > 10
+      CodeComparer.difference(real_code_sample3, real_code_sample4).abs.should > 4
     end
   end
 
@@ -184,10 +194,12 @@ describe CodeComparer do
 
       it 'should reduce ruby specific code' do
         CodeComparer.reduce("def a; end").should == 'defaend'
-        CodeComparer.reduce("def a; end", nil, 'ruby').should == 'a'
+        CodeComparer.reduce("def a; end", nil, 'ruby').should_not == 'defaend'
 
         CodeComparer.reduce("collect(0)").should == "collect0"
-        CodeComparer.reduce("collect(0)", nil, 'ruby').should == 'map0'
+        CodeComparer.reduce("collect(0)", nil, 'ruby').should_not == 'collect0'
+        CodeComparer.reduce(real_code_sample4, nil, 'ruby').should == CodeComparer.reduce(real_code_sample4b, nil, 'ruby')
+        CodeComparer.reduce(real_code_sample4, nil, 'ruby').should == CodeComparer.reduce(real_code_sample4b.gsub(/^ */, ''), nil, 'ruby')
       end
     end
 
