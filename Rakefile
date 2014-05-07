@@ -36,7 +36,3 @@ desc "Like the irb task, but with settings to accomodate running it in an editor
 task(:airb) {
   exec "irb -Ilib -ridr --prompt default --noreadline"
 }
-
-task(:spec) {
-
-}
