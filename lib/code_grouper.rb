@@ -1,4 +1,4 @@
-class CodeComparer
+class CodeGrouper
   DEFAULT_PROXIMITY = Integer(ENV['CODE_COMPARER_PROXIMITY'] || 20)
 
   attr_reader :base_code, :original_code, :code
@@ -14,11 +14,7 @@ class CodeComparer
   end
 
   def similar?(proximity = DEFAULT_PROXIMITY)
-    difference.abs <= proximity and length_difference.abs <= [proximity / 2, 5].min
-  end
-
-  def difference
-    original_code_hash_sum - code_hash_sum
+    self.class.reduced_difference(original_code_reduced, code_reduced) <= proximity && length_difference.abs <= [proximity / 2, 5].min
   end
 
   def length_difference
@@ -27,38 +23,26 @@ class CodeComparer
 
   def original_code=(val)
     @original_code = val
-    @original_code_hash_sum = nil
     @original_code_reduced = nil
   end
 
   def base_code=(val)
     @base_code = val
-    @code_hash_sum = nil
-    @original_code_hash_sum = nil
     @code_reduced = nil
     @original_code_reduced = nil
   end
 
   def code=(val)
     @code = val
-    @code_hash_sum = nil
     @code_reduced = nil
   end
 
-  def code_hash_sum
-    @code_hash_sum ||= CodeComparer.hash_sum(code, base_code)
-  end
-
-  def original_code_hash_sum
-    @original_code_hash_sum ||= CodeComparer.hash_sum(original_code, base_code)
-  end
-
   def original_code_reduced
-    @original_code_reduced ||= CodeComparer.reduce(original_code, base_code)
+    @original_code_reduced ||= CodeGrouper.reduce(original_code, base_code)
   end
 
   def code_reduced
-    @code_reduced ||= CodeComparer.reduce(code, base_code)
+    @code_reduced ||= CodeGrouper.reduce(code, base_code)
   end
 
   class << self
@@ -67,16 +51,37 @@ class CodeComparer
     # @param [String] code
     # @param [String] base_code optional value that if provided will be code that is stripped out of the other code strings
     def difference(original_code, code, base_code = nil, language = nil)
-      hash_sum(original_code, base_code, language) - hash_sum(code, base_code, language)
+      reduced_difference reduce(original_code, base_code, language), reduce(code, base_code, language)
     end
 
-    # reduces the code and sums the characters based off of a weighted character scale
-    def hash_sum(code, base_code = nil, language = nil)
-      hash_sum_reduced(reduce(code, base_code, language))
+    def reduced_difference(original_code, code)
+      olen = original_code.length
+      clen = code.length
+      dlen = (olen - clen).abs
+      d = edit_distance(original_code, code)
+      (
+        (d * 50) / Math.sqrt(clen * olen)
+      )
     end
 
-    def hash_sum_reduced(reduced_code)
-      reduced_code.codepoints.inject(0, :+)
+    # A relatively straightforward implementation of the Wagner-Fischer algorithm for calculating Levenshtein distance between two strings.
+    def edit_distance(a, b)
+      res = (0..a.length).map { |*| Array.new b.length }
+      achars = a.codepoints#.sort!
+      bchars = b.codepoints#.sort!
+      res[0][0] = 0
+      achars.each_with_index { |c,i| res[i+1][0] = i + 1 }
+      bchars.each_with_index { |c,i| res[0][i+1] = i + 1 }
+      achars.each_with_index { |ac,i|
+        bchars.each_with_index { |bc,j|
+          if ac == bc
+            res[i+1][j+1] = res[i][j]
+          else
+            res[i+1][j+1] = [res[i][j+1], res[i+1][j], res[i][j]].min + 1
+          end
+        }
+      }
+      res.last.last
     end
 
     def reduce(code, base_code = nil, language = nil)
@@ -93,14 +98,14 @@ class CodeComparer
 
       reduced = code.gsub(regex, '')
 
-      language_subs(language).each do |rx, val|
-        reduced.gsub!(rx, val)
-      end
-
       if base_code
         base_code.chomp.split(/\n/).each do |line|
           reduced.sub!(line.gsub(regex, ''), '')
         end
+      end
+
+      language_subs(language).each do |rx, val|
+        reduced.gsub!(rx, val)
       end
 
       reduced.gsub(/\n/, '')
@@ -122,19 +127,17 @@ class CodeComparer
     end
 
     def strip_code(code, base_code = nil)
-      reduced = code
+      reduced = code.dup
       if base_code
-        base_code.chomp.split(/\n/).each do |line|
+        base_code.split(/\n/).each do |line|
           reduced.sub!(line.strip, '')
         end
       end
+      
+      reduced.gsub!(/^[ \t]*|[ \t]*$/, '')
+      reduced.gsub!(/\n/, '')
 
-      final = ''
-      reduced.chomp.split(/\n/).each do |line|
-        final += line.strip
-      end
-
-      final
+      reduced
     end
   end
 
@@ -155,14 +158,13 @@ class CodeComparer
       nil
     end
 
-    def find_grouping(reduced_code, hash_sum)
-      hash_sum ||= CodeComparer.hash_sum_reduced(reduced_code) if proximity > 0
-
+    def find_grouping(reduced_code)
       @groupings.each do |group|
         if proximity == 0
           return group if group.reduced_code == reduced_code
         else
-          return group if (group.hash_sum - hash_sum).abs < @proximity
+
+          return group if CodeGrouper.reduced_difference(group.reduced_code, reduced_code) < @proximity
         end
       end
 
@@ -170,16 +172,15 @@ class CodeComparer
     end
 
     def group(code, data = nil)
-      reduced = CodeComparer.reduce(code, @base_code)
-      hash_sum = CodeComparer.hash_sum_reduced(reduced)
+      reduced = CodeGrouper.reduce(code, @base_code)
 
-      grouping = find_grouping(reduced, hash_sum)
+      grouping = find_grouping(reduced)
       # if we found an existing group than just add the data to it
       if grouping
         grouping.add(code, data)
       # otherwise create a new group
       else
-        grouping = Grouping.new(code, hash_sum, reduced, data)
+        grouping = Grouping.new(code, reduced, data)
         @groupings << grouping
       end
 
@@ -187,19 +188,16 @@ class CodeComparer
     end
 
     class Grouping
-      attr_reader :code, :hash_sum, :data, :match_data, :match_count, :variations, :reduced_code
+      attr_reader :code, :data, :match_count, :variations, :reduced_code
       attr_accessor :member_count
 
-      def initialize(code, hash_sum, reduced_code, data = nil)
+      def initialize(code, reduced_code, data = nil)
         @code = code
-        @hash_sum = hash_sum
         @reduced_code = reduced_code
 
         @data = []
-        @match_data = [] # used for tracking data that is related to an exact hash_sum match (similar to variation data for variations)
         if data
           @data << data
-          @match_data << data
         end
 
         @member_count = 1
@@ -232,7 +230,6 @@ class CodeComparer
 
         if data
           @data << data
-          @match_data << data unless variation
         end
 
         true

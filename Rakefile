@@ -29,10 +29,10 @@ task(:clean) {
 
 desc "Runs IRB, automatically require()ing #{spec.name}."
 task(:irb) {
-  exec "irb -Ilib -rcode_comparer"
+  exec "irb -Ilib -rcode_grouper"
 }
 
 desc "Like the irb task, but with settings to accomodate running it in an editor rather than a terminal (e.g., acme, emacs)."
 task(:airb) {
-  exec "irb -Ilib -rcode_comparer --prompt default --noreadline"
+  exec "irb -Ilib -rcode_grouper --prompt default --noreadline"
 }

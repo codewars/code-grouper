@@ -1,7 +1,7 @@
 require 'spec_helper'
-require 'code_comparer'
+require 'code_grouper'
 
-describe CodeComparer do
+describe CodeGrouper do
   base_code = <<-CODE
     function test(a, b, c){
       // your code goes here
@@ -87,10 +87,10 @@ describe CodeComparer do
     end
   CODE
 
-  describe CodeComparer::Grouper do
+  describe CodeGrouper::Grouper do
 
     it 'should group items' do
-      grouper = CodeComparer::Grouper.new(base_code)
+      grouper = CodeGrouper::Grouper.new(base_code)
 
       grouper.group(simple_code, {id: 1})
       grouper.group(simple_alt_code, {id: 2})
@@ -104,9 +104,6 @@ describe CodeComparer do
       grouper.groupings.first.data.size.should == 4
       grouper.groupings.first.data.last[:id].should == 5
 
-      grouper.groupings.first.match_data.size.should == 1
-      grouper.groupings.first.match_count.should == 1
-
       # variations should be 2 not 3 because they are variations grouper.groupings.first.code
       grouper.groupings.first.variations.size.should == 2
       grouper.groupings.first.variations.first[:data].size.should == 2
@@ -114,19 +111,23 @@ describe CodeComparer do
     end
 
     it 'should not group items that arent similar enough' do
-      grouper = CodeComparer::Grouper.new
+      grouper = CodeGrouper::Grouper.new
 
       grouper.group(real_code_sample1)
+      grouper.groupings.size.should == 1
       grouper.group(real_code_sample2)
+      grouper.groupings.size.should == 2
       grouper.group(real_code_sample3)
+      grouper.groupings.size.should == 3
       grouper.group(real_code_sample4)
+      grouper.groupings.size.should == 4
       grouper.group(real_code_sample5)
 
       grouper.groupings.size.should == 4
     end
 
     it 'should group items using reduced code matching when proxmity == 0' do
-      grouper = CodeComparer::Grouper.new(base_code, 0)
+      grouper = CodeGrouper::Grouper.new(base_code, 0)
 
       grouper.group(simple_code)
       grouper.group(simple_squeezed_code)
@@ -138,12 +139,12 @@ describe CodeComparer do
 
   describe 'proximity' do
     it 'should not be similar for code that is different' do
-      example = CodeComparer.new(simple_code, complex_code, base_code)
+      example = CodeGrouper.new(simple_code, complex_code, base_code)
       example.similar?.should be_false
     end
 
     it 'should be similar for code that is basically the same exact thing' do
-      example = CodeComparer.new(simple_code, simple_alt_code, base_code)
+      example = CodeGrouper.new(simple_code, simple_alt_code, base_code)
       example.similar?.should be_true
 
       example.base_code = nil
@@ -153,30 +154,56 @@ describe CodeComparer do
 
   describe 'difference' do
     it 'should return zero difference for strings that are the same' do
-      CodeComparer.difference(simple_code, simple_squeezed_code, base_code).should == 0
+      CodeGrouper.difference(simple_code, simple_squeezed_code, base_code).should == 0
     end
 
     it 'should not match 2 strings of similar weighted values but not similar code' do
-      CodeComparer.difference(real_code_sample1, real_code_sample2, real_code_sample_base).abs.should > 10
-      CodeComparer.difference(real_code_sample3, real_code_sample4).abs.should > 4
+      CodeGrouper.difference(real_code_sample1, real_code_sample2, real_code_sample_base).abs.should > 10
+      CodeGrouper.difference(real_code_sample3, real_code_sample4).abs.should > 4
     end
   end
 
-  describe 'hash_sum' do
-    it 'should return the same sum for the same chars but in different order' do
-      sum1 = CodeComparer.hash_sum('returna+b+c')
-      sum2 = CodeComparer.hash_sum('returnb+a+c')
-      sum1.should == sum2
+  describe 'difference' do
+    it 'returns a difference of zero when code is identical' do
+      sample = 'returna+b+c'
+      CodeGrouper.difference(sample, sample).should == 0
     end
 
-    it 'should always return a value greater than 1 unless only whitespace is passed in' do
-      CodeComparer.hash_sum('').should == 0
-      CodeComparer.hash_sum(' ').should == 0
-      CodeComparer.hash_sum('a').should > 0
+    it 'stays stable regardless of code size' do
+      samples = ['returna+b+c', 'returnx+y+z']
+      d1 = CodeGrouper.difference(*samples)
+      d2 = CodeGrouper.difference(*samples.map { |x| x * 20 })
+      d1.should == d2
     end
 
-    it 'should properly reduce a set of code and return the correct hash_sum value' do
-      CodeComparer.hash_sum(simple_code, base_code) == 52
+    it 'takes size difference into account' do
+      samples = ['returna+b+c', 'returnx+y+z', 'returnalpha+beta+delta']
+      d1 = CodeGrouper.difference(*samples[0,2])
+      d2 = CodeGrouper.difference(*samples[1,2])
+      d1.should < d2
+    end
+
+    it 'gives a higher score for more differences' do
+      samples = ['returna+b+c', 'returna+b+d', 'returnx+y+z']
+      d1 = CodeGrouper.difference(*samples[0,2])
+      d2 = CodeGrouper.difference(*samples[1,2])
+      d1.should < d2
+    end
+
+    it "doesn't care about the order of the samples" do
+      samples = ['returna+b+c', 'returnx+y+z']
+      d1 = CodeGrouper.difference(*samples)
+      d2 = CodeGrouper.difference(*samples.reverse)
+      d1.should == d2
+    end
+
+    it 'cares more about a small distance when the samples are small' do
+      samples = %w(a b)
+      d1 = CodeGrouper.difference(*samples)
+      d2 = CodeGrouper.difference(*samples.map { |s| s + ('X' * 2) })
+      d3 = CodeGrouper.difference(*samples.map { |s| s + ('X' * 3) })
+      d1.should > d2
+      d2.should > d3
     end
   end
 
@@ -184,32 +211,32 @@ describe CodeComparer do
   describe 'reduce and strip' do
     context 'reduce' do
       it 'should reduce a simple difference in code' do
-        CodeComparer.reduce(simple_code, base_code).should == 'returna+b+c'
-        CodeComparer.reduce(simple_alt_code, base_code).should == 'returnb+a+c'
+        CodeGrouper.reduce(simple_code, base_code).should == 'returna+b+c'
+        CodeGrouper.reduce(simple_alt_code, base_code).should == 'returnb+a+c'
       end
 
       it 'should ignore whitespace differences' do
-        CodeComparer.reduce(simple_squeezed_code, base_code).should == 'returna+b+c'
+        CodeGrouper.reduce(simple_squeezed_code, base_code).should == 'returna+b+c'
       end
 
       it 'should reduce ruby specific code' do
-        CodeComparer.reduce("def a; end").should == 'defaend'
-        CodeComparer.reduce("def a; end", nil, 'ruby').should_not == 'defaend'
+        CodeGrouper.reduce("def a; end").should == 'defaend'
+        CodeGrouper.reduce("def a; end", nil, 'ruby').should_not == 'defaend'
 
-        CodeComparer.reduce("collect(0)").should == "collect0"
-        CodeComparer.reduce("collect(0)", nil, 'ruby').should_not == 'collect0'
-        CodeComparer.reduce(real_code_sample4, nil, 'ruby').should == CodeComparer.reduce(real_code_sample4b, nil, 'ruby')
-        CodeComparer.reduce(real_code_sample4, nil, 'ruby').should == CodeComparer.reduce(real_code_sample4b.gsub(/^ */, ''), nil, 'ruby')
+        CodeGrouper.reduce("collect(0)").should == "collect0"
+        CodeGrouper.reduce("collect(0)", nil, 'ruby').should_not == 'collect0'
+        CodeGrouper.reduce(real_code_sample4, nil, 'ruby').should == CodeGrouper.reduce(real_code_sample4b, nil, 'ruby')
+        CodeGrouper.reduce(real_code_sample4, nil, 'ruby').should == CodeGrouper.reduce(real_code_sample4b.gsub(/^ */, ''), nil, 'ruby')
       end
     end
 
     context 'strip' do
       it 'should strip a simple difference in code' do
-        CodeComparer.strip_code(simple_code, base_code).should == 'return a + b + c;'
+        CodeGrouper.strip_code(simple_code, base_code).should == 'return a + b + c;'
       end
 
       it 'should ignore whitespace differences' do
-        CodeComparer.strip_code(simple_squeezed_code, base_code).should == 'function test(a,b,c) {return a + b + c;'
+        CodeGrouper.strip_code(simple_squeezed_code, base_code).should == 'function test(a,b,c) {return a + b + c;'
       end
     end
   end
