@@ -96,7 +96,7 @@ class CodeGrouper
 
       regex = /[ ;,(){}\t'"]/
 
-      reduced = code.gsub(regex, '')
+      reduced = strip_comments(code, language).gsub(regex, '')
 
       if base_code
         base_code.chomp.split(/\n/).each do |line|
@@ -109,6 +109,22 @@ class CodeGrouper
       end
 
       reduced.gsub(/\n/, '')
+    end
+
+    # Strips comments about as well as you can without using a real parser.
+    def strip_comments(code, language)
+      code = code.dup
+      return code unless language
+      comment_rx = lambda { |c| Regexp.compile("^\s+#{Regexp.escape(c)}.*") }
+
+      case language.to_sym
+      when :ruby, :coffeescript
+        code.gsub! comment_rx['#'], ''
+      when :javascript, :js
+        code.gsub! comment_rx['//'], ''
+      end
+
+      code
     end
 
     def language_subs(language)
