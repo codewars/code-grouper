@@ -86,12 +86,16 @@ class CodeGrouper
 
     def reduce(code, base_code = nil, language = nil)
       if language == 'ruby'
-        # FIXME:  We'll be splitting the languages into different classes.
-        return RubyVM::InstructionSequence.
-          compile(code).disasm.tap { |r|
-            r.gsub!(/[ \t]+/, ' ')
-            r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
-          }
+        begin
+          # FIXME:  We'll be splitting the languages into different classes.
+          return RubyVM::InstructionSequence.
+            compile(code).disasm.tap { |r|
+              r.gsub!(/[ \t]+/, ' ')
+              r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
+            }
+        rescue
+          # do nothing, likely a syntax error. Just do things the normal way instead.
+        end
       end
 
       regex = /[ ;,(){}\t'"]/
