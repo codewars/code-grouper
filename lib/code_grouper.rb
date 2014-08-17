@@ -117,8 +117,8 @@ class CodeGrouper
 
     # Strips comments about as well as you can without using a real parser.
     def strip_comments(code, language)
+      return code unless language && code
       code = code.dup
-      return code unless language
       comment_rx = lambda { |c| Regexp.compile("^\s+#{Regexp.escape(c)}.*") }
 
       case language.to_sym
