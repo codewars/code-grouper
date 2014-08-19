@@ -93,11 +93,7 @@ class CodeGrouper
               r.gsub!(/[ \t]+/, ' ')
               r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
             }
-        rescue => ex
-          # do nothing, likely a syntax error. Just do things the normal way instead.
-          if defined? Rollbar
-            Rollbar.report_exception(ex, code: code, base_code: base_code, language: language)
-          end
+        rescue
         end
       end
 
@@ -143,6 +139,10 @@ class CodeGrouper
           when :coffeescript
             subs << [' == ', ' is ']
             subs << [' !== ', ' is not ']
+
+          when :ruby
+            subs << ['kind_of?', 'is_a?']
+            subs << ['length', 'size']
         end
       end
 
