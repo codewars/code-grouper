@@ -85,17 +85,17 @@ class CodeGrouper
     end
 
     def reduce(code, base_code = nil, language = nil)
-      if language == 'ruby'
-        begin
-          # FIXME:  We'll be splitting the languages into different classes.
-          return RubyVM::InstructionSequence.
-            compile(code).disasm.tap { |r|
-              r.gsub!(/[ \t]+/, ' ')
-              r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
-            }
-        rescue
-        end
-      end
+      # if language == 'ruby'
+      #   begin
+      #     # FIXME:  We'll be splitting the languages into different classes.
+      #     return RubyVM::InstructionSequence.
+      #       compile(code).disasm.tap { |r|
+      #         r.gsub!(/[ \t]+/, ' ')
+      #         r.gsub!(/\( *\d+\) *$/, '') # Strip line numbers.
+      #       }
+      #   rescue
+      #   end
+      # end
 
       regex = /[ ;,(){}\t'"]/
 
@@ -143,6 +143,11 @@ class CodeGrouper
           when :ruby
             subs << ['kind_of?', 'is_a?']
             subs << ['length', 'size']
+            subs << ['delete_if', 'reject']
+            subs << ['delete_if!', 'reject!']
+            subs << ['keep_if', 'select']
+            subs << ['collect', 'map']
+            subs << ['member?', 'include?']
         end
       end
 
