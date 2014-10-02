@@ -121,7 +121,7 @@ class CodeGrouper
       comment_rx = lambda { |c| Regexp.compile("^\s+#{Regexp.escape(c)}.*") }
 
       case language.to_sym
-      when :ruby, :coffeescript
+      when :ruby, :coffeescript, :python
         code.gsub! comment_rx['#'], ''
       when :javascript, :js
         code.gsub! comment_rx['//'], ''
