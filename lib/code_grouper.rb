@@ -118,13 +118,17 @@ class CodeGrouper
     def strip_comments(code, language)
       return code unless language && code
       code = code.dup
-      comment_rx = lambda { |c| Regexp.compile("^\s+#{Regexp.escape(c)}.*") }
+      comment_rx = lambda { |c| Regexp.compile("#{Regexp.escape(c)}.*") }
 
       case language.to_sym
-      when :ruby, :coffeescript
+      when :ruby, :coffeescript, :python
         code.gsub! comment_rx['#'], ''
-      when :javascript, :js
+      when :javascript, :js, :java
         code.gsub! comment_rx['//'], ''
+      when :haskell
+        code.gsub! comment_rx['--'], ''
+      when :clojure
+        code.gsub! comment_rx[';'], ''
       end
 
       code
